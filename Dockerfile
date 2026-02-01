@@ -12,12 +12,12 @@ RUN npm ci --production
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 
-# Expose port
-EXPOSE 3001
+# Expose port (obscure to avoid conflicts)
+EXPOSE 7847
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api/v1/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:7847/api/v1/health || exit 1
 
 # Run
 CMD ["node", "src/index.js"]

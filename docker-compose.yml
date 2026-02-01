@@ -6,10 +6,10 @@ services:
     container_name: moltswarm-api
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "7847:7847"
     environment:
       - NODE_ENV=production
-      - PORT=3001
+      - PORT=7847
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://moltswarm-redis:6379
       - JWT_SECRET=${JWT_SECRET}
@@ -21,7 +21,7 @@ services:
     networks:
       - moltswarm
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/api/v1/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:7847/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -48,7 +48,7 @@ services:
     container_name: moltswarm-redis
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      - "7848:6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru

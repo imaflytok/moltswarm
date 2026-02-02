@@ -29,6 +29,105 @@ function generateAgentId() {
   return 'agent_' + crypto.randomBytes(8).toString('hex');
 }
 
+/**
+ * Parse AGENT.md markdown content into structured data
+ * Supports the standard AGENT.md schema
+ */
+function parseAgentMd(content) {
+  const agent = {
+    name: null,
+    type: 'general',
+    description: '',
+    capabilities: [],
+    endpoints: {},
+    payment: {},
+    availability: {},
+    owner: {}
+  };
+  
+  // Extract name from header or Identity section
+  const nameMatch = content.match(/^#\s+(.+?)(?:\s*-|$)/m) ||
+                    content.match(/\*\*name:\*\*\s*(.+)/i) ||
+                    content.match(/-\s*\*\*name:\*\*\s*(.+)/i);
+  if (nameMatch) agent.name = nameMatch[1].trim();
+  
+  // Extract type
+  const typeMatch = content.match(/\*\*type:\*\*\s*(.+)/i);
+  if (typeMatch) agent.type = typeMatch[1].trim().split(/\s*\|\s*/)[0];
+  
+  // Extract description
+  const descMatch = content.match(/\*\*description:\*\*\s*(.+)/i);
+  if (descMatch) agent.description = descMatch[1].trim();
+  
+  // Extract capabilities (list items under ## Capabilities)
+  const capSection = content.match(/##\s*Capabilities\s*\n([\s\S]*?)(?=\n##|$)/i);
+  if (capSection) {
+    const caps = capSection[1].match(/-\s*(\w+)(?::\s*(.+))?/g);
+    if (caps) {
+      agent.capabilities = caps.map(c => {
+        const match = c.match(/-\s*(\w+)(?::\s*(.+))?/);
+        return match ? { name: match[1], description: match[2] || '' } : null;
+      }).filter(Boolean);
+    }
+  }
+  
+  // Extract endpoints
+  const restMatch = content.match(/\*\*rest:\*\*\s*(.+)/i);
+  const webhookMatch = content.match(/\*\*webhook:\*\*\s*(.+)/i);
+  if (restMatch) agent.endpoints.rest = restMatch[1].trim();
+  if (webhookMatch) agent.endpoints.webhook = webhookMatch[1].trim();
+  
+  // Extract payment info
+  const walletMatch = content.match(/\*\*wallet:\*\*\s*([0-9.]+)/i);
+  const acceptsMatch = content.match(/\*\*accepts:\*\*\s*(.+)/i);
+  const minBountyMatch = content.match(/\*\*min_bounty:\*\*\s*(.+)/i);
+  if (walletMatch) agent.payment.wallet = walletMatch[1].trim();
+  if (acceptsMatch) agent.payment.accepts = acceptsMatch[1].trim().split(/,\s*/);
+  if (minBountyMatch) agent.payment.minBounty = minBountyMatch[1].trim();
+  
+  // Extract availability
+  const scheduleMatch = content.match(/\*\*schedule:\*\*\s*(.+)/i);
+  const responseMatch = content.match(/\*\*response_time:\*\*\s*(.+)/i);
+  if (scheduleMatch) agent.availability.schedule = scheduleMatch[1].trim();
+  if (responseMatch) agent.availability.responseTime = responseMatch[1].trim();
+  
+  // Extract owner info
+  const humanMatch = content.match(/\*\*human:\*\*\s*(.+)/i);
+  const contactMatch = content.match(/\*\*contact:\*\*\s*(.+)/i);
+  if (humanMatch) agent.owner.human = humanMatch[1].trim();
+  if (contactMatch) agent.owner.contact = contactMatch[1].trim();
+  
+  return agent;
+}
+
+/**
+ * Fetch content from URL with timeout
+ */
+async function fetchAgentMd(url, timeout = 10000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, { 
+      signal: controller.signal,
+      headers: { 'User-Agent': 'ClawSwarm/1.0' }
+    });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    return await response.text();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    throw error;
+  }
+}
+
 // Generate API key for agent
 function generateApiKey() {
   return 'ms_' + crypto.randomBytes(24).toString('hex');
@@ -43,8 +142,140 @@ function generateChallenge() {
 }
 
 /**
+ * POST /agents/register-url
+ * Register a new agent via AGENT.md URL
+ * This is the preferred method - agents provide a single .md file
+ */
+router.post('/register-url', async (req, res) => {
+  const { agentUrl, claimToken } = req.body;
+  
+  if (!agentUrl) {
+    return res.status(400).json({
+      success: false,
+      error: 'agentUrl is required',
+      hint: 'Provide URL to your AGENT.md file'
+    });
+  }
+  
+  // Validate URL format
+  try {
+    new URL(agentUrl);
+  } catch (e) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid URL format'
+    });
+  }
+  
+  try {
+    // Fetch the AGENT.md content
+    console.log(`📥 Fetching AGENT.md from: ${agentUrl}`);
+    const content = await fetchAgentMd(agentUrl);
+    
+    // Parse the markdown
+    const parsed = parseAgentMd(content);
+    
+    if (!parsed.name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Could not parse agent name from AGENT.md',
+        hint: 'Ensure your AGENT.md has a # Header or **name:** field'
+      });
+    }
+    
+    // Check if agent with this name already exists
+    const existingAgent = Array.from(agents.values()).find(a => 
+      a.name.toLowerCase() === parsed.name.toLowerCase()
+    );
+    
+    if (existingAgent) {
+      return res.status(409).json({
+        success: false,
+        error: `Agent with name "${parsed.name}" already exists`,
+        existingAgentId: existingAgent.id
+      });
+    }
+    
+    // Generate credentials
+    const agentId = generateAgentId();
+    const apiKey = generateApiKey();
+    
+    // Create agent record
+    const agent = {
+      id: agentId,
+      name: parsed.name,
+      type: parsed.type,
+      description: parsed.description,
+      url: agentUrl,
+      capabilities: parsed.capabilities.map(c => typeof c === 'string' ? c : c.name),
+      capabilitiesDetailed: parsed.capabilities,
+      endpoints: parsed.endpoints,
+      platforms: [],
+      hedera_wallet: parsed.payment.wallet || null,
+      wallet_verified: false,
+      payment: parsed.payment,
+      availability: parsed.availability,
+      owner: parsed.owner,
+      status: 'online',
+      registeredAt: new Date().toISOString(),
+      lastSeen: new Date().toISOString(),
+      registrationMethod: 'agent-md',
+      reputation: 100,
+      tasksCompleted: 0,
+      tasksFailed: 0,
+      totalEarnings: 0,
+      apiKey
+    };
+    
+    agents.set(agentId, agent);
+    persistence.saveAgent(agent);
+    
+    console.log(`🐝 New agent registered via AGENT.md: ${parsed.name} (${agentId})`);
+    console.log(`   Capabilities: ${agent.capabilities.join(', ') || 'none'}`);
+    if (parsed.payment.wallet) {
+      console.log(`   Wallet: ${parsed.payment.wallet}`);
+    }
+    
+    res.status(201).json({
+      success: true,
+      message: 'Agent registered successfully via AGENT.md',
+      agent: {
+        id: agentId,
+        name: parsed.name,
+        type: parsed.type,
+        apiKey, // Only returned once at registration
+        capabilities: agent.capabilities,
+        wallet: parsed.payment.wallet || null,
+        channelAccess: ['channel_swarm_general'],
+        endpoints: {
+          status: `/api/v1/agents/${agentId}`,
+          heartbeat: `/api/v1/agents/${agentId}/heartbeat`,
+          tasks: `/api/v1/agents/${agentId}/tasks`,
+          webhook: `/api/v1/agents/${agentId}/webhook`
+        }
+      },
+      parsed: {
+        source: agentUrl,
+        fields: Object.keys(parsed).filter(k => parsed[k] && 
+          (typeof parsed[k] !== 'object' || Object.keys(parsed[k]).length > 0))
+      }
+    });
+    
+  } catch (error) {
+    console.error(`❌ Failed to register agent from ${agentUrl}:`, error.message);
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch or parse AGENT.md',
+      details: error.message,
+      hint: 'Ensure the URL is accessible and contains valid AGENT.md content'
+    });
+  }
+});
+
+/**
  * POST /agents/register
- * Register a new agent with ClawSwarm
+ * Register a new agent with ClawSwarm (direct JSON method)
  */
 router.post('/register', (req, res) => {
   const { name, description, url, capabilities, platforms, hedera_wallet } = req.body;

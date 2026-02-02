@@ -239,4 +239,199 @@ router.get("/_health/redis", async (req, res) => {
   res.json(health);
 });
 
+// ============================================
+// PHASE 2: Per-Agent Reliable Messaging
+// ============================================
+
+/**
+ * POST /:channelId/subscribe
+ * Subscribe an agent to a channel with their own consumer group
+ * This enables reliable message delivery - agents won't miss messages
+ */
+router.post("/:channelId/subscribe", async (req, res) => {
+  const { agentId, startFrom = "$" } = req.body;
+  if (!agentId) return res.status(400).json({ error: "agentId required" });
+
+  const channel = channels.get(req.params.channelId);
+  if (!channel) return res.status(404).json({ error: "Channel not found" });
+
+  try {
+    const result = await streams.subscribeAgent(req.params.channelId, agentId, startFrom);
+    
+    // Also add to channel members if not already
+    if (!channel.members) channel.members = [];
+    if (!channel.members.includes(agentId)) {
+      channel.members.push(agentId);
+      persistence.saveChannel(channel);
+    }
+    
+    res.json({
+      success: true,
+      channelId: req.params.channelId,
+      agentId,
+      ...result,
+      hint: startFrom === "0" ? "Will receive all historical messages" : "Will receive only new messages"
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /:channelId/unsubscribe
+ * Unsubscribe an agent from a channel
+ */
+router.post("/:channelId/unsubscribe", async (req, res) => {
+  const { agentId } = req.body;
+  if (!agentId) return res.status(400).json({ error: "agentId required" });
+
+  const channel = channels.get(req.params.channelId);
+  if (!channel) return res.status(404).json({ error: "Channel not found" });
+
+  try {
+    const result = await streams.unsubscribeAgent(req.params.channelId, agentId);
+    
+    // Also remove from channel members
+    if (channel.members) {
+      channel.members = channel.members.filter(id => id !== agentId);
+      persistence.saveChannel(channel);
+    }
+    
+    res.json({ success: true, channelId: req.params.channelId, agentId });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /:channelId/read/:agentId
+ * Read new (unread) messages for a specific agent
+ * Uses agent's own consumer group - messages are marked as delivered
+ */
+router.get("/:channelId/read/:agentId", async (req, res) => {
+  const { agentId } = req.params;
+  const count = parseInt(req.query.count) || 50;
+  const block = parseInt(req.query.block) || 0;
+
+  const channel = channels.get(req.params.channelId);
+  if (!channel) return res.status(404).json({ error: "Channel not found" });
+
+  try {
+    const messages = await streams.readForAgent(req.params.channelId, agentId, count, block);
+    
+    res.json({
+      channelId: req.params.channelId,
+      agentId,
+      count: messages.length,
+      messages,
+      hint: messages.length > 0 ? "Remember to ACK messages after processing" : "No new messages"
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /:channelId/pending/:agentId
+ * Get pending (delivered but unacknowledged) messages for an agent
+ * Use this to catch up after being offline
+ */
+router.get("/:channelId/pending/:agentId", async (req, res) => {
+  const { agentId } = req.params;
+  const count = parseInt(req.query.count) || 100;
+
+  const channel = channels.get(req.params.channelId);
+  if (!channel) return res.status(404).json({ error: "Channel not found" });
+
+  try {
+    const result = await streams.getPendingForAgent(req.params.channelId, agentId, count);
+    
+    res.json({
+      channelId: req.params.channelId,
+      agentId,
+      ...result,
+      hint: result.count > 0 ? "These messages were delivered but not acknowledged - process and ACK them" : "No pending messages"
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /:channelId/ack
+ * Acknowledge message(s) as processed by an agent
+ */
+router.post("/:channelId/ack", async (req, res) => {
+  const { agentId, messageId, messageIds } = req.body;
+  if (!agentId) return res.status(400).json({ error: "agentId required" });
+  if (!messageId && !messageIds) return res.status(400).json({ error: "messageId or messageIds required" });
+
+  const channel = channels.get(req.params.channelId);
+  if (!channel) return res.status(404).json({ error: "Channel not found" });
+
+  try {
+    let acked = 0;
+    
+    if (messageIds && Array.isArray(messageIds)) {
+      acked = await streams.ackBatchForAgent(req.params.channelId, agentId, messageIds);
+    } else if (messageId) {
+      const result = await streams.ackForAgent(req.params.channelId, agentId, messageId);
+      acked = result ? 1 : 0;
+    }
+    
+    res.json({
+      success: true,
+      channelId: req.params.channelId,
+      agentId,
+      acknowledged: acked
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /:channelId/status/:agentId
+ * Get agent's subscription status for a channel
+ */
+router.get("/:channelId/status/:agentId", async (req, res) => {
+  const { agentId } = req.params;
+
+  const channel = channels.get(req.params.channelId);
+  if (!channel) return res.status(404).json({ error: "Channel not found" });
+
+  try {
+    const status = await streams.getAgentStatus(req.params.channelId, agentId);
+    
+    res.json({
+      channelId: req.params.channelId,
+      agentId,
+      ...status
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /:channelId/subscribers
+ * List all agents subscribed to a channel (with their pending counts)
+ */
+router.get("/:channelId/subscribers", async (req, res) => {
+  const channel = channels.get(req.params.channelId);
+  if (!channel) return res.status(404).json({ error: "Channel not found" });
+
+  try {
+    const subscribers = await streams.getChannelSubscribers(req.params.channelId);
+    
+    res.json({
+      channelId: req.params.channelId,
+      count: subscribers.length,
+      subscribers
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

@@ -209,13 +209,19 @@ async function dispatchForMessage(channelId, channelName, message, subscribers =
   
   if (toNotify.size === 0) return;
   
-  console.log(`🪝 Dispatching webhooks to ${toNotify.size} agents`);
+  console.log(`🪝 Dispatching to ${toNotify.size} agents`);
   
-  // Fire all webhooks in parallel (don't await, fire-and-forget)
-  const eventType = mentions.length > 0 ? 'mention' : 'channel_subscribed';
+  // Lazy-load notifications to avoid circular dependency
+  let addNotification;
+  try {
+    addNotification = require('../routes/notifications').addNotification;
+  } catch (e) {
+    console.log('Notifications module not available');
+  }
   
   for (const agentId of toNotify) {
-    fireWebhook(agentId, mentions.includes(agentId) ? 'mention' : 'channel_subscribed', {
+    const eventType = mentions.includes(agentId) ? 'mention' : 'channel_subscribed';
+    const eventData = {
       channel: { id: channelId, name: channelName },
       message: {
         id: message.id,
@@ -224,7 +230,15 @@ async function dispatchForMessage(channelId, channelName, message, subscribers =
         timestamp: message.timestamp
       },
       mentionedAgents: mentions
-    }).catch(() => {}); // Ignore errors, already logged
+    };
+    
+    // Always store in notification inbox (for polling)
+    if (addNotification) {
+      addNotification(agentId, { event: eventType, ...eventData });
+    }
+    
+    // Also try webhook (for push)
+    fireWebhook(agentId, eventType, eventData).catch(() => {});
   }
 }
 

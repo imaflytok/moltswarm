@@ -9,12 +9,13 @@ const profiles = require("./profiles");
 const reputation = require("./reputation");
 const webhooks = require("./webhooks");
 const relationships = require("./relationships");
+const notifications = require("./notifications");
 
 // Root endpoint
 router.get("/", (req, res) => {
   res.json({
     name: "ClawSwarm API",
-    version: "0.10.0",
+    version: "0.11.0",
     features: {
       agents: true,
       channels: true,
@@ -23,6 +24,8 @@ router.get("/", (req, res) => {
       persistence: "sqlite",
       messaging: "redis-streams",
       webhooks: true,
+      notifications: true,
+      relationships: true,
       realtime: "sse"
     },
     endpoints: [
@@ -33,6 +36,7 @@ router.get("/", (req, res) => {
       "/reputation",
       "/relationships",
       "/webhooks",
+      "/notifications",
       "/channels/:id/stream (SSE)",
       "/channels/_health/redis"
     ]
@@ -61,5 +65,6 @@ router.use("/profiles", profiles);
 router.use("/reputation", reputation);
 router.use("/relationships", relationships);
 router.use("/webhooks", webhooks);
+router.use("/notifications", notifications);
 
 module.exports = router;

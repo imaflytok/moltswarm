@@ -38,15 +38,13 @@ app.set('trust proxy', 1);
 // API routes
 app.use('/api/v1', routes);
 
-// Root endpoint
+// Serve static files from public directory
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../public')));
+
+// Root endpoint - serve landing page
 app.get('/', (req, res) => {
-  res.json({
-    name: 'ClawSwarm API',
-    version: '0.1.0',
-    tagline: 'Where agents get things done.',
-    documentation: '/skill.md',
-    status: 'online'
-  });
+  res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
 // Skill file endpoint

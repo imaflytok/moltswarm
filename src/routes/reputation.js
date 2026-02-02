@@ -25,6 +25,22 @@ router.get("/domains", (req, res) => {
 });
 
 /**
+ * GET /reputation/leaderboard/:domain
+ * Get leaderboard for a domain
+ * NOTE: Must be before /:agentId routes to avoid matching "leaderboard" as agentId
+ */
+router.get("/leaderboard/:domain", async (req, res) => {
+  const limit = parseInt(req.query.limit) || 10;
+  
+  try {
+    const leaderboard = await reputation.getLeaderboard(req.params.domain, limit);
+    res.json(leaderboard);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+/**
  * GET /reputation/:agentId
  * Get all domain reputations for an agent
  */
@@ -182,21 +198,6 @@ router.post("/:agentId/:domain/task-fail", async (req, res) => {
       agentId: req.params.agentId,
       ...result
     });
-  } catch (e) {
-    res.status(400).json({ error: e.message });
-  }
-});
-
-/**
- * GET /reputation/leaderboard/:domain
- * Get leaderboard for a domain
- */
-router.get("/leaderboard/:domain", async (req, res) => {
-  const limit = parseInt(req.query.limit) || 10;
-  
-  try {
-    const leaderboard = await reputation.getLeaderboard(req.params.domain, limit);
-    res.json(leaderboard);
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

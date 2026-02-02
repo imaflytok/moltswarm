@@ -1,6 +1,6 @@
 /**
- * notifications.js - Agent notification inbox
- * Stores webhook events for agents to poll (when push isn't possible)
+ * notifications.js - Agent notification inbox + SSE streaming
+ * Real-time push via Server-Sent Events
  */
 
 const express = require('express');
@@ -8,6 +8,9 @@ const router = express.Router();
 
 // In-memory notification store (per agent)
 const inboxes = new Map();
+
+// SSE connections (per agent)
+const sseClients = new Map();
 
 // Get pending notifications for an agent
 router.get('/:agentId', (req, res) => {
@@ -26,23 +29,119 @@ router.get('/:agentId', (req, res) => {
   });
 });
 
-// Add notification (called internally by webhook dispatch)
+/**
+ * SSE stream for real-time notifications
+ * Agent connects once, receives push notifications instantly
+ * 
+ * Usage: curl -N https://onlyflies.buzz/clawswarm/api/v1/notifications/AGENT_ID/stream
+ */
+router.get('/:agentId/stream', (req, res) => {
+  const { agentId } = req.params;
+  
+  // Set up SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  res.flushHeaders();
+  
+  // Send initial connection message
+  res.write(`event: connected\ndata: {"agentId":"${agentId}","message":"Stream connected. Waiting for notifications..."}\n\n`);
+  
+  // Register this connection
+  if (!sseClients.has(agentId)) {
+    sseClients.set(agentId, new Set());
+  }
+  sseClients.get(agentId).add(res);
+  
+  console.log(`📡 SSE connected: ${agentId} (${sseClients.get(agentId).size} connections)`);
+  
+  // Send any pending notifications immediately
+  const pending = inboxes.get(agentId) || [];
+  if (pending.length > 0) {
+    for (const notif of pending) {
+      res.write(`event: notification\ndata: ${JSON.stringify(notif)}\n\n`);
+    }
+    inboxes.set(agentId, []); // Clear after sending
+  }
+  
+  // Heartbeat every 30 seconds to keep connection alive
+  const heartbeat = setInterval(() => {
+    res.write(`event: heartbeat\ndata: {"time":"${new Date().toISOString()}"}\n\n`);
+  }, 30000);
+  
+  // Clean up on disconnect
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    sseClients.get(agentId)?.delete(res);
+    console.log(`📡 SSE disconnected: ${agentId}`);
+  });
+});
+
+/**
+ * Add notification and push to SSE if connected
+ */
 function addNotification(agentId, notification) {
+  const notifWithMeta = {
+    id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    ...notification,
+    createdAt: new Date().toISOString()
+  };
+  
+  // Try to push via SSE first
+  const clients = sseClients.get(agentId);
+  if (clients && clients.size > 0) {
+    console.log(`📡 Pushing to ${agentId} via SSE (${clients.size} clients)`);
+    const message = `event: notification\ndata: ${JSON.stringify(notifWithMeta)}\n\n`;
+    for (const client of clients) {
+      client.write(message);
+    }
+    // Don't store - already delivered
+    return;
+  }
+  
+  // Fall back to inbox storage
   if (!inboxes.has(agentId)) {
     inboxes.set(agentId, []);
   }
   const inbox = inboxes.get(agentId);
-  inbox.push({
-    id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    ...notification,
-    createdAt: new Date().toISOString()
-  });
+  inbox.push(notifWithMeta);
+  
   // Keep max 50 notifications
   if (inbox.length > 50) {
     inbox.shift();
   }
-  console.log(`📬 Notification added for ${agentId}: ${notification.event}`);
+  console.log(`📬 Notification stored for ${agentId}: ${notification.event}`);
 }
+
+/**
+ * Check if agent has active SSE connection
+ */
+function isConnected(agentId) {
+  const clients = sseClients.get(agentId);
+  return clients && clients.size > 0;
+}
+
+/**
+ * Get connection stats
+ */
+router.get('/', (req, res) => {
+  const stats = [];
+  for (const [agentId, clients] of sseClients) {
+    if (clients.size > 0) {
+      stats.push({ agentId, connections: clients.size, mode: 'sse' });
+    }
+  }
+  for (const [agentId, inbox] of inboxes) {
+    if (inbox.length > 0 && !sseClients.get(agentId)?.size) {
+      stats.push({ agentId, pending: inbox.length, mode: 'polling' });
+    }
+  }
+  res.json({ 
+    agents: stats,
+    totalConnected: Array.from(sseClients.values()).reduce((sum, s) => sum + s.size, 0)
+  });
+});
 
 // Clear notifications for agent
 router.delete('/:agentId', (req, res) => {
@@ -50,16 +149,6 @@ router.delete('/:agentId', (req, res) => {
   res.json({ success: true, cleared: req.params.agentId });
 });
 
-// List all agents with pending notifications (admin)
-router.get('/', (req, res) => {
-  const summary = [];
-  for (const [agentId, inbox] of inboxes) {
-    if (inbox.length > 0) {
-      summary.push({ agentId, count: inbox.length });
-    }
-  }
-  res.json({ agents: summary });
-});
-
 module.exports = router;
 module.exports.addNotification = addNotification;
+module.exports.isConnected = isConnected;

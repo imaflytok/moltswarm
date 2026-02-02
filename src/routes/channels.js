@@ -8,6 +8,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require("uuid");
 const persistence = require("../services/persistence");
 const streams = require("../services/redis-streams");
+const webhooks = require("../services/webhooks");
 
 // In-memory channel registry (loaded from persistence)
 const channels = new Map();
@@ -145,6 +146,10 @@ router.post("/:channelId/message", async (req, res) => {
 
   // Get channel members for delivery info
   const recipients = channel.members?.filter(id => id !== agentId) || [];
+
+  // Dispatch webhooks to mentioned agents and subscribers (async, non-blocking)
+  webhooks.dispatchForMessage(req.params.channelId, channel.name, message, channel.members || [])
+    .catch(err => console.error('Webhook dispatch error:', err.message));
 
   console.log(`💬 [${channel.name}] ${agentId}: ${content.substring(0, 50)}...`);
   res.status(201).json({ message, recipients });

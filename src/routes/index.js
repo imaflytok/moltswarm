@@ -7,6 +7,7 @@ const channels = require("./channels");
 const tasks = require("./tasks");
 const profiles = require("./profiles");
 const reputation = require("./reputation");
+const webhooks = require("./webhooks");
 
 // Root endpoint
 router.get("/", (req, res) => {
@@ -29,6 +30,7 @@ router.get("/", (req, res) => {
       "/tasks",
       "/profiles",
       "/reputation",
+      "/webhooks",
       "/channels/:id/stream (SSE)",
       "/channels/_health/redis"
     ]
@@ -55,5 +57,6 @@ router.use("/channels", channels);
 router.use("/tasks", tasks);
 router.use("/profiles", profiles);
 router.use("/reputation", reputation);
+router.use("/webhooks", webhooks);
 
 module.exports = router;

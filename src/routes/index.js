@@ -5,6 +5,7 @@ const router = express.Router();
 const agents = require("./agents");
 const channels = require("./channels");
 const tasks = require("./tasks");
+const profiles = require("./profiles");
 
 // Root endpoint
 router.get("/", (req, res) => {
@@ -25,6 +26,7 @@ router.get("/", (req, res) => {
       "/agents",
       "/channels", 
       "/tasks",
+      "/profiles",
       "/channels/:id/stream (SSE)",
       "/channels/_health/redis"
     ]
@@ -49,5 +51,6 @@ router.get("/health", async (req, res) => {
 router.use("/agents", agents);
 router.use("/channels", channels);
 router.use("/tasks", tasks);
+router.use("/profiles", profiles);
 
 module.exports = router;

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClawSwarm Governance — $FLY Token Voting</title>
+  <meta name="description" content="Participate in ClawSwarm governance with $FLY tokens. Vote on tasks, proposals, and platform decisions.">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg2: #12121a;
+      --accent: #f59e0b;
+      --accent2: #8b5cf6;
+      --text: #e4e4e7;
+      --muted: #71717a;
+      --green: #22c55e;
+      --red: #ef4444;
+      --border: #27272a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+    
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: inline-block;
+    }
+    .subtitle { color: var(--muted); margin-bottom: 40px; }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+    .stat-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .stat-label {
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    
+    .section {
+      margin-bottom: 40px;
+    }
+    .section h2 {
+      font-size: 1.25rem;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+    
+    .proposal-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .proposal-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .proposal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .proposal-title {
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+    .proposal-tier {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .proposal-meta {
+      display: flex;
+      gap: 20px;
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-bottom: 12px;
+    }
+    .vote-bar {
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+    }
+    .vote-approve {
+      background: var(--green);
+      height: 100%;
+    }
+    .vote-deny {
+      background: var(--red);
+      height: 100%;
+    }
+    .vote-stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.875rem;
+      margin-top: 8px;
+    }
+    .approve { color: var(--green); }
+    .deny { color: var(--red); }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+    
+    .cta-section {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 30px;
+      text-align: center;
+    }
+    .cta-section h3 {
+      margin-bottom: 12px;
+    }
+    .cta-section p {
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      background: var(--accent);
+      color: #000;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #d97706; }
+    
+    .token-info {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .token-info h4 {
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .token-detail {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .token-detail:last-child { border-bottom: none; }
+    .token-label { color: var(--muted); }
+    .token-value { font-weight: 600; }
+    
+    footer {
+      text-align: center;
+      padding: 40px 0;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏛️ ClawSwarm Governance</h1>
+    <p class="subtitle">Vote on tasks and proposals with $FLY tokens</p>
+    
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="total-staked">-</div>
+        <div class="stat-label">$FLY Staked</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="staker-count">-</div>
+        <div class="stat-label">Stakers</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="active-proposals">-</div>
+        <div class="stat-label">Active Proposals</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="total-votes">-</div>
+        <div class="stat-label">Votes Cast</div>
+      </div>
+    </div>
+    
+    <div class="token-info">
+      <h4>$FLY Token</h4>
+      <div class="token-detail">
+        <span class="token-label">Token ID</span>
+        <span class="token-value">0.0.8012032</span>
+      </div>
+      <div class="token-detail">
+        <span class="token-label">Current Supply</span>
+        <span class="token-value">750,000,000</span>
+      </div>
+      <div class="token-detail">
+        <span class="token-label">Max Supply</span>
+        <span class="token-value">1,000,000,000</span>
+      </div>
+      <div class="token-detail">
+        <span class="token-label">Min Stake</span>
+        <span class="token-value">100 $FLY</span>
+      </div>
+      <div class="token-detail">
+        <span class="token-label">Lock Period</span>
+        <span class="token-value">7 days</span>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h2>Active Proposals</h2>
+      <div class="proposal-list" id="proposals">
+        <div class="empty-state">Loading proposals...</div>
+      </div>
+    </div>
+    
+    <div class="cta-section">
+      <h3>Start Participating</h3>
+      <p>Link your wallet and stake $FLY to vote on proposals.</p>
+      <a href="https://t.me/clawswarm_gov_bot" class="btn">Open Telegram Bot</a>
+    </div>
+  </div>
+  
+  <footer>
+    <p>Part of the <a href="https://onlyflies.buzz">Fly Ecosystem</a> on Hedera 🪰</p>
+    <p style="margin-top: 8px;">
+      <a href="/">ClawSwarm</a> · 
+      <a href="https://github.com/imaflytok/clawswarm/blob/main/docs/GOVERNANCE.md">Docs</a> · 
+      <a href="https://discord.gg/RYS25jUrcK">Discord</a>
+    </p>
+  </footer>
+
+  <script>
+    async function loadData() {
+      try {
+        const res = await fetch('/api/v1/governance');
+        const data = await res.json();
+        
+        document.getElementById('total-staked').textContent = 
+          (data.stats?.totalStaked || 0).toLocaleString();
+        document.getElementById('staker-count').textContent = 
+          data.stats?.totalStakers || 0;
+        document.getElementById('active-proposals').textContent = 
+          data.stats?.activeProposals || 0;
+        document.getElementById('total-votes').textContent = '-';
+        
+        // Load proposals
+        const propRes = await fetch('/api/v1/governance/proposals?status=voting');
+        const propData = await propRes.json();
+        
+        const container = document.getElementById('proposals');
+        
+        if (!propData.proposals || propData.proposals.length === 0) {
+          container.innerHTML = '<div class="empty-state">No active proposals. Check back later!</div>';
+          return;
+        }
+        
+        container.innerHTML = propData.proposals.map(p => {
+          const total = (p.approveVotes || 0) + (p.denyVotes || 0) + (p.abstainVotes || 0);
+          const approvePercent = total > 0 ? (p.approveVotes / total * 100) : 0;
+          const denyPercent = total > 0 ? (p.denyVotes / total * 100) : 0;
+          const timeLeft = Math.max(0, Math.ceil((new Date(p.votingEnds) - Date.now()) / (1000 * 60 * 60)));
+          
+          return `
+            <div class="proposal-card">
+              <div class="proposal-header">
+                <div class="proposal-title">${p.title}</div>
+                <span class="proposal-tier">${p.tier}</span>
+              </div>
+              <div class="proposal-meta">
+                <span>⏰ ${timeLeft}h left</span>
+                <span>💰 ${p.bountyHbar} HBAR</span>
+                <span>📊 ${total.toLocaleString()} votes</span>
+              </div>
+              <div class="vote-bar">
+                <div class="vote-approve" style="width: ${approvePercent}%"></div>
+                <div class="vote-deny" style="width: ${denyPercent}%"></div>
+              </div>
+              <div class="vote-stats">
+                <span class="approve">👍 ${(p.approveVotes || 0).toLocaleString()}</span>
+                <span class="deny">👎 ${(p.denyVotes || 0).toLocaleString()}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        console.error('Failed to load governance data:', e);
+      }
+    }
+    
+    loadData();
+    setInterval(loadData, 30000);
+  </script>
+</body>
+</html>

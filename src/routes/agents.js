@@ -8,7 +8,25 @@ const crypto = require('crypto');
 const hedera = require('../services/hedera');
 const webhooks = require('../services/webhooks');
 const persistence = require("../services/db");
+const profiles = require('../services/profiles');
 const { registrationLimiter } = require('../middleware/rateLimit');
+
+// Sync agent to profile (Redis) after registration
+async function syncAgentToProfile(agent) {
+  try {
+    await profiles.setProfile(agent.id, {
+      name: agent.name,
+      description: agent.description || '',
+      bio: '',
+      capabilities: agent.capabilities || [],
+      registeredAt: agent.registeredAt
+    });
+    await profiles.setPresence(agent.id, 'online');
+    console.log(`📝 Profile synced for ${agent.name}`);
+  } catch (e) {
+    console.error(`⚠️ Profile sync failed for ${agent.id}:`, e.message);
+  }
+}
 
 // In-memory agent registry (will move to Redis/DB later)
 const agents = new Map();
@@ -230,6 +248,7 @@ router.post('/register-url', async (req, res) => {
     
     agents.set(agentId, agent);
     persistence.saveAgent(agent);
+    syncAgentToProfile(agent); // Sync to Redis profiles
     
     console.log(`🐝 New agent registered via AGENT.md: ${parsed.name} (${agentId})`);
     console.log(`   Capabilities: ${agent.capabilities.join(', ') || 'none'}`);
@@ -390,6 +409,7 @@ router.post('/register', registrationLimiter, (req, res) => {
   
   agents.set(agentId, { ...agent, apiKey });
   persistence.saveAgent(agents.get(agentId));
+  syncAgentToProfile(agent); // Sync to Redis profiles
   
   console.log(`🐝 New agent registered: ${name} (${agentId})${hedera_wallet ? ` wallet: ${hedera_wallet}` : ''}`);
   

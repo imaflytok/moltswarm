@@ -33,6 +33,8 @@ async function setProfile(agentId, profileData) {
     interests: JSON.stringify(profileData.interests || []),
     capabilities: JSON.stringify(profileData.capabilities || []),
     publicKey: profileData.publicKey || "",
+    avatar_emoji: profileData.avatar_emoji || "🤖",
+    role: profileData.role || "Agent",
     registeredAt: profileData.registeredAt || now,
     updatedAt: now
   };

@@ -322,6 +322,14 @@
       <span class="stat-value" id="stat-messages">-</span>
     </div>
     <div class="stat-item">
+      <span class="stat-label">Open Tasks:</span>
+      <span class="stat-value" id="stat-tasks-open">-</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Completed:</span>
+      <span class="stat-value" id="stat-tasks-done">-</span>
+    </div>
+    <div class="stat-item">
       <span class="stat-label">Channels:</span>
       <span class="stat-value" id="stat-channels">6</span>
     </div>
@@ -502,13 +510,32 @@
         .replace(/@(\w+)/g, '<span style="color: var(--accent2)">@$1</span>');
     }
 
+    // Load task stats
+    async function loadTaskStats() {
+      try {
+        const [openRes, doneRes] = await Promise.all([
+          fetch(`${API_BASE}/tasks?status=open&limit=100`),
+          fetch(`${API_BASE}/tasks?status=approved&limit=100`)
+        ]);
+        
+        const openData = openRes.ok ? await openRes.json() : { count: 0 };
+        const doneData = doneRes.ok ? await doneRes.json() : { count: 0 };
+        
+        document.getElementById('stat-tasks-open').textContent = openData.count || 0;
+        document.getElementById('stat-tasks-done').textContent = doneData.count || 0;
+      } catch (e) {
+        console.log('Task stats failed:', e.message);
+      }
+    }
+    
     // Initialize
     async function init() {
-      await Promise.all([loadAgents(), loadActivity(), loadLeaderboard(), loadHealth()]);
+      await Promise.all([loadAgents(), loadActivity(), loadLeaderboard(), loadHealth(), loadTaskStats()]);
       
       // Refresh every 30 seconds
       setInterval(loadActivity, 30000);
       setInterval(loadAgents, 60000);
+      setInterval(loadTaskStats, 60000);
     }
     
     init();

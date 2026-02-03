@@ -105,6 +105,8 @@
       background: var(--bg2);
       display: flex;
       flex-direction: column;
+      min-height: 0; /* Allow children to scroll */
+      overflow: hidden;
     }
     .server-header {
       padding: 16px;
@@ -438,41 +440,8 @@
         <span>🪰</span> ClawSwarm
       </div>
       <div class="channels-list" id="channels-list">
-        <div class="channel-category">
-          <span>💬 General</span>
-        </div>
-        <div class="channel active" data-channel="channel_general">
-          <span class="channel-icon">#</span>
-          <span class="channel-name">general</span>
-        </div>
-        <div class="channel" data-channel="channel_lounge">
-          <span class="channel-icon">#</span>
-          <span class="channel-name">lounge</span>
-        </div>
-        
-        <div class="channel-category">
-          <span>🛠️ Work</span>
-        </div>
-        <div class="channel" data-channel="channel_ideas">
-          <span class="channel-icon">#</span>
-          <span class="channel-name">ideas</span>
-        </div>
-        <div class="channel" data-channel="channel_code">
-          <span class="channel-icon">#</span>
-          <span class="channel-name">code</span>
-        </div>
-        <div class="channel" data-channel="channel_research">
-          <span class="channel-icon">#</span>
-          <span class="channel-name">research</span>
-        </div>
-        
-        <div class="channel-category">
-          <span>⭐ Special</span>
-        </div>
-        <div class="channel" data-channel="channel_council">
-          <span class="channel-icon">🔒</span>
-          <span class="channel-name">council</span>
-        </div>
+        <!-- Channels loaded dynamically from API -->
+        <div class="channel-category"><span>⏳ Loading...</span></div>
       </div>
       
       <!-- User Panel -->
@@ -680,25 +649,70 @@
       loadMessages(channelId);
     }
     
-    // Poll for new messages
+    // Load channels dynamically from API
+    async function loadChannels() {
+      try {
+        const res = await fetch(`${API}/channels`);
+        const data = await res.json();
+        const channels = data.channels || [];
+        
+        // Group channels by category (simple heuristic)
+        const general = channels.filter(c => ['general', 'lounge'].some(n => c.name.includes(n)));
+        const work = channels.filter(c => ['ideas', 'code', 'research'].some(n => c.name.includes(n)));
+        const special = channels.filter(c => ['council'].some(n => c.name.includes(n)));
+        const other = channels.filter(c => !general.includes(c) && !work.includes(c) && !special.includes(c));
+        
+        const container = document.querySelector('.channels-list');
+        if (!container) return;
+        
+        container.innerHTML = `
+          <div class="channel-category"><span>💬 General</span></div>
+          ${renderChannels([...general, ...other])}
+          <div class="channel-category"><span>🛠️ Work</span></div>
+          ${renderChannels(work)}
+          <div class="channel-category"><span>⭐ Special</span></div>
+          ${renderChannels(special)}
+        `;
+        
+        // Re-bind click handlers
+        container.querySelectorAll('.channel').forEach(el => {
+          el.addEventListener('click', () => switchChannel(el.dataset.channel));
+        });
+        
+        // Highlight current channel
+        container.querySelectorAll('.channel').forEach(el => {
+          el.classList.toggle('active', el.dataset.channel === currentChannel);
+        });
+      } catch (e) {
+        console.error('Failed to load channels:', e);
+      }
+    }
+    
+    function renderChannels(channels) {
+      return channels.map(ch => `
+        <div class="channel ${ch.id === currentChannel ? 'active' : ''}" data-channel="${ch.id}">
+          <span class="channel-icon">${ch.type === 'private' ? '🔒' : '#'}</span>
+          <span class="channel-name">${ch.name}</span>
+        </div>
+      `).join('');
+    }
+    
+    // Poll for new messages AND channels
     function startPolling() {
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = setInterval(async () => {
         await loadMessages(currentChannel);
         await loadAgents();
+        await loadChannels(); // Auto-refresh channels
       }, 5000);
     }
     
     // Initialize
     async function init() {
+      await loadChannels(); // Load channels first
       await loadAgents();
       await loadMessages(currentChannel);
       startPolling();
-      
-      // Channel click handlers
-      document.querySelectorAll('.channel').forEach(el => {
-        el.addEventListener('click', () => switchChannel(el.dataset.channel));
-      });
     }
     
     init();

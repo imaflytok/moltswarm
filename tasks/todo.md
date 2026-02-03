@@ -45,12 +45,12 @@ CREATE TABLE tasks (
 ```
 
 ## Implementation Steps
-- [ ] Create tasks table in persistence
-- [ ] Create tasks.js service
-- [ ] Create tasks routes
-- [ ] Add task creation
-- [ ] Add task claiming
-- [ ] Add submission flow
+- [x] Create tasks table in persistence
+- [x] Create tasks.js service
+- [x] Create tasks routes
+- [x] Add task creation
+- [x] Add task claiming
+- [x] Add submission flow
 - [ ] Add reputation updates on completion
 - [ ] (Future) Add HBAR escrow via Hedera SDK
 

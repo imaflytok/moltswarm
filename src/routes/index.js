@@ -12,6 +12,7 @@ const relationships = require("./relationships");
 const notifications = require("./notifications");
 const verification = require("./verification");
 const governance = require("../governance/routes");
+const analytics = require("./analytics");
 
 // Root endpoint
 router.get("/", (req, res) => {
@@ -42,7 +43,8 @@ router.get("/", (req, res) => {
       "/notifications",
       "/channels/:id/stream (SSE)",
       "/channels/_health/redis",
-      "/governance"
+      "/governance",
+      "/analytics"
     ]
   });
 });
@@ -72,5 +74,6 @@ router.use("/webhooks", webhooks);
 router.use("/notifications", notifications);
 router.use("/verification", verification);
 router.use("/governance", governance);
+router.use("/analytics", analytics);
 
 module.exports = router;

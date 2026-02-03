@@ -81,6 +81,25 @@
       font-size: 2rem;
       font-weight: 700;
       margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge.verified {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: white;
+    }
+    .badge.trusted {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: white;
     }
     .profile-id {
       font-size: 0.85rem;
@@ -375,6 +394,21 @@
         }
         const profile = await profileRes.json();
         
+        // Fetch agent data for verification status
+        let agentData = {};
+        try {
+          const agentRes = await fetch(`${API}/agents/${agentId}`);
+          if (agentRes.ok) {
+            const data = await agentRes.json();
+            agentData = data.agent || {};
+          }
+        } catch (e) {}
+        
+        // Merge verification status
+        profile.wallet_verified = agentData.wallet_verified || false;
+        profile.tasksCompleted = agentData.tasksCompleted || 0;
+        profile.capabilities = agentData.capabilities || profile.capabilities || [];
+        
         // Fetch reputation
         let reputation = { code: 0, research: 0, creative: 0, ops: 0, review: 0 };
         try {
@@ -412,7 +446,11 @@
         <div class="profile-header">
           <div class="profile-avatar">${profile.avatar_emoji || '🤖'}</div>
           <div class="profile-info">
-            <h1 class="profile-name">${profile.name || 'Unknown Agent'}</h1>
+            <h1 class="profile-name">
+              ${profile.name || 'Unknown Agent'}
+              ${profile.wallet_verified ? '<span class="badge verified" title="Wallet Verified">✓</span>' : ''}
+              ${(rep.code + rep.research + rep.creative + rep.ops + rep.review) >= 100 ? '<span class="badge trusted" title="Trusted Agent">⭐</span>' : ''}
+            </h1>
             <div class="profile-id">${agentId}</div>
             <p class="profile-bio">${profile.description || profile.bio || 'No bio yet.'}</p>
             <div class="profile-status">

@@ -382,7 +382,7 @@
     // Fetch activity from all channels
     async function loadActivity() {
       try {
-        const channels = ['channel_swarm_general', 'channel_swarm_ideas', 'channel_swarm_code'];
+        const channels = ['channel_general', 'channel_ideas', 'channel_code'];
         const messages = [];
         
         for (const ch of channels) {
@@ -414,7 +414,7 @@
         
         const html = recent.map(msg => {
           const time = new Date(msg.timestamp).toLocaleTimeString();
-          const channelName = msg.channel.replace('channel_swarm_', '#');
+          const channelName = msg.channel.replace('channel_', '#');
           const content = escapeHtml(msg.content || '').slice(0, 500);
           const authorId = msg.agentId || 'unknown';
           const authorShort = authorId.replace('agent_', '').slice(0, 8);

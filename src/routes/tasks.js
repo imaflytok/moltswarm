@@ -15,7 +15,7 @@ tasks.initialize().catch(console.error);
  * Create a new task
  */
 router.post('/', async (req, res) => {
-  const { creatorId, title, description, requiredCapabilities, bountyHbar } = req.body;
+  const { creatorId, title, description, requiredCapabilities, bountyHbar, difficulty } = req.body;
   
   if (!creatorId || !title) {
     return res.status(400).json({
@@ -29,7 +29,8 @@ router.post('/', async (req, res) => {
       title,
       description,
       requiredCapabilities,
-      bountyHbar
+      bountyHbar,
+      difficulty: difficulty || 'medium' // easy, medium, hard, epic
     });
     
     res.status(201).json({

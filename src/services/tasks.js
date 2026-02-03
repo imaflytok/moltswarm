@@ -24,6 +24,17 @@ const STATUS = {
   CANCELLED: 'cancelled'
 };
 
+const DIFFICULTY = {
+  EASY: { name: 'easy', repReward: 5, color: '#22c55e' },
+  MEDIUM: { name: 'medium', repReward: 15, color: '#f59e0b' },
+  HARD: { name: 'hard', repReward: 30, color: '#ef4444' },
+  EPIC: { name: 'epic', repReward: 50, color: '#8b5cf6' }
+};
+
+function getDifficulty(name) {
+  return DIFFICULTY[name?.toUpperCase()] || DIFFICULTY.MEDIUM;
+}
+
 /**
  * Initialize tasks table
  */
@@ -38,6 +49,7 @@ async function initialize() {
         title TEXT NOT NULL,
         description TEXT,
         required_capabilities JSONB DEFAULT '[]',
+        difficulty TEXT DEFAULT 'medium',
         bounty_hbar REAL DEFAULT 0,
         escrow_tx TEXT,
         status TEXT DEFAULT 'open',
@@ -50,6 +62,8 @@ async function initialize() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Add difficulty column if missing (migration)
+    await db.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS difficulty TEXT DEFAULT 'medium'`).catch(() => {});
   } else {
     db.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
@@ -58,6 +72,7 @@ async function initialize() {
         title TEXT NOT NULL,
         description TEXT,
         required_capabilities TEXT DEFAULT '[]',
+        difficulty TEXT DEFAULT 'medium',
         bounty_hbar REAL DEFAULT 0,
         escrow_tx TEXT,
         status TEXT DEFAULT 'open',
@@ -85,10 +100,12 @@ function generateId() {
 /**
  * Create a new task
  */
-async function createTask(creatorId, { title, description, requiredCapabilities = [], bountyHbar = 0 }) {
+async function createTask(creatorId, { title, description, requiredCapabilities = [], bountyHbar = 0, difficulty = 'medium' }) {
   const db = await persistence.getDb();
   const id = generateId();
   const now = new Date().toISOString();
+  
+  const diffInfo = getDifficulty(difficulty);
   
   const task = {
     id,
@@ -96,6 +113,7 @@ async function createTask(creatorId, { title, description, requiredCapabilities 
     title,
     description: description || '',
     required_capabilities: requiredCapabilities,
+    difficulty: diffInfo.name,
     bounty_hbar: bountyHbar,
     status: STATUS.OPEN,
     created_at: now
@@ -103,14 +121,14 @@ async function createTask(creatorId, { title, description, requiredCapabilities 
   
   if (persistence.isPostgres) {
     await db.query(`
-      INSERT INTO tasks (id, creator_id, title, description, required_capabilities, bounty_hbar, status, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [id, creatorId, title, task.description, JSON.stringify(requiredCapabilities), bountyHbar, STATUS.OPEN, now]);
+      INSERT INTO tasks (id, creator_id, title, description, required_capabilities, difficulty, bounty_hbar, status, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `, [id, creatorId, title, task.description, JSON.stringify(requiredCapabilities), diffInfo.name, bountyHbar, STATUS.OPEN, now]);
   } else {
     db.prepare(`
-      INSERT INTO tasks (id, creator_id, title, description, required_capabilities, bounty_hbar, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, creatorId, title, task.description, JSON.stringify(requiredCapabilities), bountyHbar, STATUS.OPEN, now);
+      INSERT INTO tasks (id, creator_id, title, description, required_capabilities, difficulty, bounty_hbar, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, creatorId, title, task.description, JSON.stringify(requiredCapabilities), diffInfo.name, bountyHbar, STATUS.OPEN, now);
   }
   
   console.log(`📋 Task created: ${title} (${id}) by ${creatorId}`);
@@ -262,7 +280,7 @@ async function approveTask(taskId, creatorId, result = '') {
     `).run(STATUS.APPROVED, result, now, taskId);
   }
   
-  // Update reputation for claimant
+  // Update reputation for claimant based on task difficulty
   if (reputation) {
     try {
       // Determine domain from task capabilities or default to 'ops'
@@ -270,8 +288,9 @@ async function approveTask(taskId, creatorId, result = '') {
       const validDomains = ['code', 'research', 'creative', 'ops', 'review'];
       const repDomain = validDomains.includes(domain) ? domain : 'ops';
       
-      await reputation.recordTaskComplete(task.claimant_id, repDomain, 'medium');
-      console.log(`⭐ Reputation +15 for ${task.claimant_id} in ${repDomain}`);
+      const diffInfo = getDifficulty(task.difficulty);
+      await reputation.recordTaskComplete(task.claimant_id, repDomain, diffInfo.name);
+      console.log(`⭐ Reputation +${diffInfo.repReward} for ${task.claimant_id} in ${repDomain} (${diffInfo.name})`);
     } catch (e) {
       console.log('Reputation update failed:', e.message);
     }

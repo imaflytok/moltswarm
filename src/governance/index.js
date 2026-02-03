@@ -7,6 +7,7 @@ const config = require('./config');
 const routes = require('./routes');
 const staking = require('./services/staking');
 const proposals = require('./services/proposals');
+const chainWatcher = require('./services/chain-watcher');
 const { handleGovCommand } = require('./bot/commands');
 
 module.exports = {
@@ -14,5 +15,6 @@ module.exports = {
   routes,
   staking,
   proposals,
+  chainWatcher,
   handleGovCommand
 };

@@ -8,11 +8,18 @@ const router = express.Router();
 const config = require('./config');
 const staking = require('./services/staking');
 const proposals = require('./services/proposals');
+const chainWatcher = require('./services/chain-watcher');
 
 // Initialize on load
 (async () => {
   await staking.initialize();
   await proposals.initialize();
+  
+  // Start chain watcher (monitors $FLY transfers to escrow)
+  if (process.env.ENABLE_CHAIN_WATCHER !== 'false') {
+    chainWatcher.start();
+  }
+  
   console.log('🏛️ Governance module initialized');
 })();
 
@@ -271,6 +278,34 @@ router.post('/proposals/:id/reveal', async (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+// ============ Chain Watcher Routes ============
+
+/**
+ * GET /governance/chain/status
+ * Get chain watcher status
+ */
+router.get('/chain/status', async (req, res) => {
+  const status = chainWatcher.getStatus();
+  const balance = await chainWatcher.getEscrowBalance();
+  
+  res.json({
+    ...status,
+    escrowBalance: balance
+  });
+});
+
+/**
+ * GET /governance/chain/verify/:txId
+ * Verify a specific transaction
+ */
+router.get('/chain/verify/:txId', async (req, res) => {
+  const tx = await chainWatcher.verifyTransaction(req.params.txId);
+  if (!tx) {
+    return res.status(404).json({ error: 'Transaction not found' });
+  }
+  res.json(tx);
 });
 
 module.exports = router;

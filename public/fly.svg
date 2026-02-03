@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <style>
+    @keyframes wing-flap {
+      0%, 100% { transform: rotate(-20deg) scaleY(1); }
+      50% { transform: rotate(-25deg) scaleY(0.8); }
+    }
+    @keyframes wing-flap-r {
+      0%, 100% { transform: rotate(20deg) scaleY(1); }
+      50% { transform: rotate(25deg) scaleY(0.8); }
+    }
+    @keyframes hover {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+    .fly-body { animation: hover 0.5s ease-in-out infinite; }
+    .wing-left { animation: wing-flap 0.08s ease-in-out infinite; transform-origin: 28px 35px; }
+    .wing-right { animation: wing-flap-r 0.08s ease-in-out infinite; transform-origin: 36px 35px; }
+  </style>
+  
+  <g class="fly-body">
+    <!-- Fly body -->
+    <ellipse cx="32" cy="40" rx="10" ry="14" fill="#1a1a2e"/>
+    <ellipse cx="32" cy="40" rx="8" ry="12" fill="#2d2d44"/>
+    
+    <!-- Fly head -->
+    <circle cx="32" cy="22" r="10" fill="#1a1a2e"/>
+    <circle cx="32" cy="22" r="8" fill="#2d2d44"/>
+    
+    <!-- Eyes -->
+    <circle cx="27" cy="20" r="4" fill="#ff3366"/>
+    <circle cx="37" cy="20" r="4" fill="#ff3366"/>
+    <circle cx="28" cy="19" r="1.5" fill="#ffffff" opacity="0.6"/>
+    <circle cx="38" cy="19" r="1.5" fill="#ffffff" opacity="0.6"/>
+    
+    <!-- Legs -->
+    <line x1="26" y1="48" x2="20" y2="58" stroke="#1a1a2e" stroke-width="2" stroke-linecap="round"/>
+    <line x1="32" y1="50" x2="32" y2="60" stroke="#1a1a2e" stroke-width="2" stroke-linecap="round"/>
+    <line x1="38" y1="48" x2="44" y2="58" stroke="#1a1a2e" stroke-width="2" stroke-linecap="round"/>
+    
+    <!-- Antennae -->
+    <line x1="28" y1="14" x2="22" y2="6" stroke="#1a1a2e" stroke-width="2" stroke-linecap="round"/>
+    <line x1="36" y1="14" x2="42" y2="6" stroke="#1a1a2e" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="22" cy="6" r="2" fill="#39FF14"/>
+    <circle cx="42" cy="6" r="2" fill="#39FF14"/>
+  </g>
+  
+  <!-- Wings (separate for animation) -->
+  <g class="wing-left">
+    <ellipse cx="18" cy="35" rx="14" ry="8" fill="#39FF14" opacity="0.3"/>
+    <ellipse cx="18" cy="35" rx="12" ry="6" fill="#00FFFF" opacity="0.4"/>
+  </g>
+  <g class="wing-right">
+    <ellipse cx="46" cy="35" rx="14" ry="8" fill="#39FF14" opacity="0.3"/>
+    <ellipse cx="46" cy="35" rx="12" ry="6" fill="#00FFFF" opacity="0.4"/>
+  </g>
+</svg>

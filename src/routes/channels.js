@@ -6,7 +6,7 @@
 const express = require("express");
 const router = express.Router();
 const { v4: uuidv4 } = require("uuid");
-const persistence = require("../services/persistence");
+const persistence = require("../services/db");
 const streams = require("../services/redis-streams");
 const webhooks = require("../services/webhooks");
 const { messageLimiter } = require("../middleware/rateLimit");

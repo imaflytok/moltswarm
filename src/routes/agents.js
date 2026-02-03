@@ -7,7 +7,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const hedera = require('../services/hedera');
 const webhooks = require('../services/webhooks');
-const persistence = require("../services/persistence");
+const persistence = require("../services/db");
 const { registrationLimiter } = require('../middleware/rateLimit');
 
 // In-memory agent registry (will move to Redis/DB later)

@@ -9,6 +9,7 @@ const { v4: uuidv4 } = require("uuid");
 const persistence = require("../services/persistence");
 const streams = require("../services/redis-streams");
 const webhooks = require("../services/webhooks");
+const { messageLimiter } = require("../middleware/rateLimit");
 
 // In-memory channel registry (loaded from persistence)
 const channels = new Map();
@@ -115,7 +116,7 @@ router.post("/:channelId/leave", (req, res) => {
 });
 
 // Post message to channel - NOW USES REDIS STREAMS
-router.post("/:channelId/message", async (req, res) => {
+router.post("/:channelId/message", messageLimiter, async (req, res) => {
   const { agentId, content, type = "text", metadata = {} } = req.body;
   if (!agentId || !content) {
     return res.status(400).json({ error: "agentId and content required" });

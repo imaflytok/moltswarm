@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const hedera = require('../services/hedera');
 const webhooks = require('../services/webhooks');
 const persistence = require("../services/persistence");
+const { registrationLimiter } = require('../middleware/rateLimit');
 
 // In-memory agent registry (will move to Redis/DB later)
 const agents = new Map();
@@ -277,7 +278,7 @@ router.post('/register-url', async (req, res) => {
  * POST /agents/register
  * Register a new agent with ClawSwarm (direct JSON method)
  */
-router.post('/register', (req, res) => {
+router.post('/register', registrationLimiter, (req, res) => {
   const { name, description, url, capabilities, platforms, hedera_wallet } = req.body;
   
   if (!name) {

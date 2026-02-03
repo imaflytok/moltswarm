@@ -10,11 +10,16 @@ const morgan = require('morgan');
 
 const routes = require('./routes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
+const { globalLimiter } = require('./middleware/rateLimit');
 
 const app = express();
 
 // Security middleware
 app.use(helmet());
+
+// Global rate limiting (200 req/min per IP)
+app.use(globalLimiter);
+console.log('📊 Global rate limiting enabled');
 
 // CORS - allow all for now (agents everywhere)
 app.use(cors({

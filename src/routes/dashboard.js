@@ -1,6 +1,7 @@
 /**
  * Dashboard Analytics API Routes
  * Historical data for dashboard charts
+ * Uses PostgreSQL via persistence.pool.query()
  */
 
 const express = require('express');
@@ -16,15 +17,15 @@ router.get('/stats', async (req, res) => {
   
   try {
     // Get all tasks for historical analysis
-    // Use loadAllTasks() or db.prepare directly
     let allTasks = [];
     let allAgents = [];
     
     try {
       if (persistence.loadAllTasks) {
-        allTasks = persistence.loadAllTasks() || [];
-      } else if (persistence.db) {
-        allTasks = persistence.db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all() || [];
+        allTasks = await Promise.resolve(persistence.loadAllTasks()) || [];
+      } else if (persistence.pool) {
+        const { rows } = await persistence.pool.query('SELECT * FROM tasks ORDER BY created_at DESC');
+        allTasks = rows || [];
       }
     } catch (e) {
       console.error('Failed to load tasks:', e.message);
@@ -32,9 +33,10 @@ router.get('/stats', async (req, res) => {
     
     try {
       if (persistence.loadAllAgents) {
-        allAgents = persistence.loadAllAgents() || [];
-      } else if (persistence.db) {
-        allAgents = persistence.db.prepare('SELECT * FROM agents').all() || [];
+        allAgents = await Promise.resolve(persistence.loadAllAgents()) || [];
+      } else if (persistence.pool) {
+        const { rows } = await persistence.pool.query('SELECT * FROM agents');
+        allAgents = rows || [];
       }
     } catch (e) {
       console.error('Failed to load agents:', e.message);
@@ -56,7 +58,7 @@ router.get('/stats', async (req, res) => {
       const tasksCreated = allTasks.filter(t => {
         const created = t.created_at || t.createdAt;
         if (!created) return false;
-        const createdDate = created.split('T')[0];
+        const createdDate = created.split ? created.split('T')[0] : new Date(created).toISOString().split('T')[0];
         return createdDate === dateStr;
       }).length;
       
@@ -64,7 +66,7 @@ router.get('/stats', async (req, res) => {
       const approvedTasks = allTasks.filter(t => {
         const completed = t.completed_at || t.updated_at;
         if (t.status !== 'approved' || !completed) return false;
-        const completedDate = completed.split('T')[0];
+        const completedDate = completed.split ? completed.split('T')[0] : new Date(completed).toISOString().split('T')[0];
         return completedDate === dateStr;
       });
       const hbarPaid = approvedTasks.reduce((sum, t) => sum + (parseFloat(t.bounty_hbar) || 0), 0);
@@ -73,7 +75,8 @@ router.get('/stats', async (req, res) => {
       const agentsTotal = allAgents.filter(a => {
         const registered = a.created_at || a.registeredAt || a.registered_at;
         if (!registered) return true; // Count agents without date
-        return registered <= nextDateStr;
+        const regDate = registered.split ? registered : new Date(registered).toISOString();
+        return regDate <= nextDateStr;
       }).length;
       
       dailyStats.push({
@@ -125,10 +128,15 @@ router.get('/leaderboard', async (req, res) => {
   try {
     let tasks = [];
     try {
-      if (persistence.db) {
-        tasks = persistence.db.prepare(
-          `SELECT claimant_id, bounty_hbar FROM tasks WHERE status = 'approved' AND claimant_id IS NOT NULL`
-        ).all() || [];
+      if (persistence.pool) {
+        const { rows } = await persistence.pool.query(
+          `SELECT claimant_id, bounty_hbar FROM tasks WHERE status = $1 AND claimant_id IS NOT NULL`,
+          ['approved']
+        );
+        tasks = rows || [];
+      } else if (persistence.loadAllTasks) {
+        const allTasks = await Promise.resolve(persistence.loadAllTasks()) || [];
+        tasks = allTasks.filter(t => t.status === 'approved' && t.claimant_id);
       }
     } catch (e) {
       console.error('Failed to load tasks for leaderboard:', e.message);
@@ -138,7 +146,7 @@ router.get('/leaderboard', async (req, res) => {
     const earnings = {};
     tasks.forEach(t => {
       const agent = t.claimant_id;
-      const amount = t.bounty_hbar || 0;
+      const amount = parseFloat(t.bounty_hbar) || 0;
       if (agent && amount > 0) {
         earnings[agent] = (earnings[agent] || 0) + amount;
       }
@@ -177,10 +185,15 @@ router.get('/activity', async (req, res) => {
     
     // Get recent tasks with activity
     try {
-      if (persistence.db) {
-        tasks = persistence.db.prepare(
-          `SELECT * FROM tasks ORDER BY updated_at DESC, created_at DESC LIMIT ?`
-        ).all(limit * 2) || [];
+      if (persistence.pool) {
+        const { rows } = await persistence.pool.query(
+          `SELECT * FROM tasks ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT $1`,
+          [limit * 2]
+        );
+        tasks = rows || [];
+      } else if (persistence.loadAllTasks) {
+        const allTasks = await Promise.resolve(persistence.loadAllTasks()) || [];
+        tasks = allTasks.slice(0, limit * 2);
       }
     } catch (e) {
       console.error('Failed to load tasks for activity:', e.message);
@@ -188,10 +201,12 @@ router.get('/activity', async (req, res) => {
     
     // Get recent messages
     try {
-      if (persistence.db) {
-        messages = persistence.db.prepare(
-          `SELECT * FROM messages ORDER BY timestamp DESC LIMIT ?`
-        ).all(limit) || [];
+      if (persistence.pool) {
+        const { rows } = await persistence.pool.query(
+          `SELECT * FROM messages ORDER BY timestamp DESC LIMIT $1`,
+          [limit]
+        );
+        messages = rows || [];
       }
     } catch (e) {
       console.error('Failed to load messages for activity:', e.message);

@@ -13,6 +13,7 @@ const notifications = require("./notifications");
 const verification = require("./verification");
 const governance = require("../governance/routes");
 const analytics = require("./analytics");
+const escrow = require("./escrow");
 
 // Root endpoint
 router.get("/", (req, res) => {
@@ -36,6 +37,7 @@ router.get("/", (req, res) => {
       "/agents",
       "/channels", 
       "/tasks",
+      "/escrow",
       "/profiles",
       "/reputation",
       "/relationships",
@@ -67,6 +69,7 @@ router.get("/health", async (req, res) => {
 router.use("/agents", agents);
 router.use("/channels", channels);
 router.use("/tasks", tasks);
+router.use("/escrow", escrow);
 router.use("/profiles", profiles);
 router.use("/reputation", reputation);
 router.use("/relationships", relationships);

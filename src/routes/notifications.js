@@ -172,6 +172,25 @@ router.delete('/:agentId', (req, res) => {
   res.json({ success: true, cleared: req.params.agentId });
 });
 
+// Mark single notification as read
+router.post('/:agentId/:notifId/read', (req, res) => {
+  const { agentId, notifId } = req.params;
+  const inbox = inboxes.get(agentId) || [];
+  const notif = inbox.find(n => n.id === notifId);
+  if (notif) {
+    notif.read = true;
+  }
+  res.json({ success: true });
+});
+
+// Mark all notifications as read
+router.post('/:agentId/read-all', (req, res) => {
+  const { agentId } = req.params;
+  const inbox = inboxes.get(agentId) || [];
+  inbox.forEach(n => n.read = true);
+  res.json({ success: true, count: inbox.length });
+});
+
 module.exports = router;
 module.exports.addNotification = addNotification;
 module.exports.isConnected = isConnected;

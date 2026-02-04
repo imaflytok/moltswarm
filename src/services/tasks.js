@@ -77,11 +77,13 @@ async function initialize() {
         submitted_at TIMESTAMP,
         result TEXT,
         completed_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        comments JSONB DEFAULT '[]'
       )
     `);
     // Add difficulty column if missing (migration)
     await db.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS difficulty TEXT DEFAULT 'medium'`).catch(() => {});
+    await db.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS comments JSONB DEFAULT '[]'`).catch(() => {});
   } else {
     db.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
@@ -100,9 +102,14 @@ async function initialize() {
         submitted_at TEXT,
         result TEXT,
         completed_at TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        comments TEXT DEFAULT '[]'
       )
     `);
+    // Migration for existing tables
+    try {
+      db.exec(`ALTER TABLE tasks ADD COLUMN comments TEXT DEFAULT '[]'`);
+    } catch (e) { /* column already exists */ }
   }
   
   console.log('📋 Tasks table initialized');
@@ -179,6 +186,12 @@ async function getTask(taskId) {
   
   if (task && typeof task.required_capabilities === 'string') {
     task.required_capabilities = JSON.parse(task.required_capabilities);
+  }
+  if (task && typeof task.comments === 'string') {
+    task.comments = JSON.parse(task.comments);
+  }
+  if (task && !task.comments) {
+    task.comments = [];
   }
   
   return task;
@@ -462,6 +475,50 @@ async function cancelTask(taskId, creatorId) {
   return { ...task, status: STATUS.CANCELLED, refund: refundResult };
 }
 
+/**
+ * Add a comment to a task
+ * Only creator and claimant can comment
+ */
+async function addComment(taskId, authorId, content) {
+  const task = await getTask(taskId);
+  
+  if (!task) throw new Error('Task not found');
+  
+  // Only creator and claimant can comment
+  if (task.creator_id !== authorId && task.claimant_id !== authorId) {
+    throw new Error('Only task creator or claimant can comment');
+  }
+  
+  const comment = {
+    id: `comment_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    authorId,
+    content,
+    createdAt: new Date().toISOString()
+  };
+  
+  const comments = task.comments || [];
+  comments.push(comment);
+  
+  const db = await persistence.getDb();
+  
+  if (persistence.isPostgres) {
+    await db.query(`UPDATE tasks SET comments = $1::jsonb WHERE id = $2`, [JSON.stringify(comments), taskId]);
+  } else {
+    db.prepare(`UPDATE tasks SET comments = ? WHERE id = ?`).run(JSON.stringify(comments), taskId);
+  }
+  
+  console.log(`💬 Comment added to task ${taskId} by ${authorId}`);
+  return comment;
+}
+
+/**
+ * Get comments for a task
+ */
+async function getComments(taskId) {
+  const task = await getTask(taskId);
+  return task?.comments || [];
+}
+
 module.exports = {
   STATUS,
   initialize,
@@ -472,5 +529,7 @@ module.exports = {
   submitTask,
   approveTask,
   rejectTask,
-  cancelTask
+  cancelTask,
+  addComment,
+  getComments
 };

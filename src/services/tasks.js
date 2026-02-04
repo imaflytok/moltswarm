@@ -3,16 +3,34 @@
  * ClawSwarm - Phase 3: Agent Collaboration
  * 
  * Enables agents to post tasks, claim them, and complete for reputation
+ * Now with HBAR bounty escrow integration!
  */
 
 const crypto = require('crypto');
 const persistence = require('./db');
-let reputation;
+
+// Optional services - load gracefully
+let reputation, escrow, hedera;
 try {
   reputation = require('./reputation');
 } catch (e) {
   console.log('Reputation service not available');
 }
+try {
+  escrow = require('./escrow');
+  console.log('💰 Escrow service loaded');
+} catch (e) {
+  console.log('Escrow service not available');
+}
+try {
+  hedera = require('./hedera');
+  console.log('🌐 Hedera service loaded');
+} catch (e) {
+  console.log('Hedera service not available');
+}
+
+// Platform fee for bounty tasks (5% = revenue!)
+const PLATFORM_FEE_PERCENT = 5;
 
 // Task statuses
 const STATUS = {
@@ -131,7 +149,17 @@ async function createTask(creatorId, { title, description, requiredCapabilities 
     `).run(id, creatorId, title, task.description, JSON.stringify(requiredCapabilities), diffInfo.name, bountyHbar, STATUS.OPEN, now);
   }
   
-  console.log(`📋 Task created: ${title} (${id}) by ${creatorId}`);
+  // Create escrow record for bounty tasks
+  if (bountyHbar > 0 && escrow) {
+    try {
+      escrow.create(id, creatorId, bountyHbar);
+      console.log(`💰 Escrow created for task ${id}: ${bountyHbar} HBAR`);
+    } catch (e) {
+      console.log(`⚠️ Escrow creation failed: ${e.message}`);
+    }
+  }
+  
+  console.log(`📋 Task created: ${title} (${id}) by ${creatorId}${bountyHbar > 0 ? ` [${bountyHbar} HBAR bounty]` : ''}`);
   return task;
 }
 
@@ -206,12 +234,17 @@ async function listTasks({ status, capability, creatorId, claimantId, limit = 50
 /**
  * Claim a task
  */
-async function claimTask(taskId, claimantId) {
+async function claimTask(taskId, claimantId, claimantWallet = null) {
   const task = await getTask(taskId);
   
   if (!task) throw new Error('Task not found');
   if (task.status !== STATUS.OPEN) throw new Error(`Task is ${task.status}, cannot claim`);
   if (task.creator_id === claimantId) throw new Error('Cannot claim your own task');
+  
+  // For bounty tasks, claimant should provide wallet (can be done later too)
+  if (task.bounty_hbar > 0 && !claimantWallet) {
+    console.log(`⚠️ Bounty task claimed without wallet - agent must provide wallet before payout`);
+  }
   
   const db = await persistence.getDb();
   const now = new Date().toISOString();
@@ -224,6 +257,18 @@ async function claimTask(taskId, claimantId) {
     db.prepare(`
       UPDATE tasks SET status = ?, claimant_id = ?, claimed_at = ? WHERE id = ?
     `).run(STATUS.CLAIMED, claimantId, now, taskId);
+  }
+  
+  // Update escrow if this is a bounty task
+  if (task.bounty_hbar > 0 && escrow) {
+    try {
+      const escrowRecord = escrow.get(taskId);
+      if (escrowRecord && escrowRecord.state === 'DEPOSITED') {
+        escrow.claim(taskId, claimantId, claimantWallet);
+      }
+    } catch (e) {
+      console.log(`⚠️ Escrow claim update failed: ${e.message}`);
+    }
   }
   
   console.log(`📋 Task claimed: ${taskId} by ${claimantId}`);
@@ -260,7 +305,7 @@ async function submitTask(taskId, claimantId, submission) {
 /**
  * Approve task submission
  */
-async function approveTask(taskId, creatorId, result = '') {
+async function approveTask(taskId, creatorId, result = '', claimantWallet = null) {
   const task = await getTask(taskId);
   
   if (!task) throw new Error('Task not found');
@@ -296,10 +341,57 @@ async function approveTask(taskId, creatorId, result = '') {
     }
   }
   
-  // TODO: Release HBAR escrow if applicable
+  // Release HBAR bounty if applicable
+  let paymentResult = null;
+  if (task.bounty_hbar > 0 && hedera) {
+    try {
+      // Get wallet from escrow or parameter
+      let wallet = claimantWallet;
+      if (!wallet && escrow) {
+        const escrowRecord = escrow.get(taskId);
+        wallet = escrowRecord?.agentWallet;
+      }
+      
+      if (wallet && hedera.isValidAccountId(wallet)) {
+        // Calculate payout (bounty minus platform fee)
+        const platformFee = task.bounty_hbar * (PLATFORM_FEE_PERCENT / 100);
+        const agentPayout = task.bounty_hbar - platformFee;
+        
+        // Pay the agent
+        paymentResult = await hedera.payBounty(
+          wallet,
+          agentPayout,
+          `ClawSwarm bounty: ${taskId}`
+        );
+        
+        if (paymentResult.success) {
+          console.log(`💰 Bounty paid: ${agentPayout} HBAR to ${wallet} (${PLATFORM_FEE_PERCENT}% fee = ${platformFee} HBAR)`);
+          
+          // Update escrow state
+          if (escrow) {
+            escrow.release(taskId, creatorId, paymentResult.transactionId);
+          }
+        } else {
+          console.log(`⚠️ Bounty payment failed: ${paymentResult.error}`);
+        }
+      } else {
+        console.log(`⚠️ Cannot pay bounty - no valid wallet for claimant ${task.claimant_id}`);
+        paymentResult = { success: false, error: 'No valid wallet provided' };
+      }
+    } catch (e) {
+      console.log(`❌ Bounty payment error: ${e.message}`);
+      paymentResult = { success: false, error: e.message };
+    }
+  }
   
   console.log(`📋 Task approved: ${taskId}`);
-  return { ...task, status: STATUS.APPROVED, result, completed_at: now };
+  return { 
+    ...task, 
+    status: STATUS.APPROVED, 
+    result, 
+    completed_at: now,
+    payment: paymentResult
+  };
 }
 
 /**
@@ -349,10 +441,25 @@ async function cancelTask(taskId, creatorId) {
     db.prepare(`UPDATE tasks SET status = ? WHERE id = ?`).run(STATUS.CANCELLED, taskId);
   }
   
-  // TODO: Refund HBAR escrow if applicable
+  // Handle escrow refund if applicable
+  let refundResult = null;
+  if (task.bounty_hbar > 0 && escrow) {
+    try {
+      const escrowRecord = escrow.get(taskId);
+      if (escrowRecord && ['DEPOSITED', 'CLAIMED'].includes(escrowRecord.state)) {
+        // Mark escrow as refunded (actual HBAR was held in treasury)
+        escrow.refund(taskId, 'Task cancelled by creator');
+        refundResult = { success: true, message: 'Escrow marked as refunded' };
+        console.log(`💰 Escrow refunded for cancelled task: ${taskId}`);
+      }
+    } catch (e) {
+      console.log(`⚠️ Escrow refund failed: ${e.message}`);
+      refundResult = { success: false, error: e.message };
+    }
+  }
   
   console.log(`📋 Task cancelled: ${taskId}`);
-  return { ...task, status: STATUS.CANCELLED };
+  return { ...task, status: STATUS.CANCELLED, refund: refundResult };
 }
 
 module.exports = {

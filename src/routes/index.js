@@ -14,6 +14,7 @@ const verification = require("./verification");
 const governance = require("../governance/routes");
 const analytics = require("./analytics");
 const escrow = require("./escrow");
+const dashboard = require("./dashboard");
 
 // Root endpoint
 router.get("/", (req, res) => {
@@ -46,7 +47,8 @@ router.get("/", (req, res) => {
       "/channels/:id/stream (SSE)",
       "/channels/_health/redis",
       "/governance",
-      "/analytics"
+      "/analytics",
+      "/dashboard"
     ]
   });
 });
@@ -78,5 +80,6 @@ router.use("/notifications", notifications);
 router.use("/verification", verification);
 router.use("/governance", governance);
 router.use("/analytics", analytics);
+router.use("/dashboard", dashboard);
 
 module.exports = router;
